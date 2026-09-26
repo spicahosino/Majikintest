@@ -16,6 +16,8 @@
 <div class="actionblock">コロネリア：サイコロ1個 → 好きな色のパワー3個　<select id="corodie"></select><select id="corocolor"><option value="y">黄</option><option value="r">赤</option><option value="p">紫</option></select><button id="coroconvert" class="secondary">能力使用</button></div>
 <div class="actionblock">パワー交換：同色2個 → 別色1個　<select id="fromcolor"><option value="y">黄</option><option value="r">赤</option><option value="p">紫</option></select> → <select id="tocolor"><option value="r">赤</option><option value="p">紫</option><option value="y">黄</option></select><button id="powerexchange" class="secondary">交換</button></div>
 <div class="actionblock"><button id="refresh" class="secondary danger">黄1＋赤1＋紫1で公開場を全交換</button></div>
+<div class="actionblock"><strong>手札・設置</strong><div id="handactions" class="small" style="margin-top:6px"></div></div>
+<div class="actionblock"><strong>設置済みカード</strong><div id="installedcards" class="small" style="margin-top:6px"></div></div>
 </div></div></div>
 <div class="row"><div><strong>公開場</strong><div class="muted">サイコロ1個を使って、選んだ種類の束をすべて獲得。空きはターン終了まで補充しません。</div></div><span>別名 <strong id="types">8</strong>/8種類</span></div><div id="market" class="market"></div>
 <div id="limit" class="notice hidden"></div><div id="finalplayers" class="players"></div><div class="stats"><span>捨て札：<strong id="discardcount">0</strong>枚</span><span>公開場：<strong id="marketcount">0</strong>枚</span><span>山札：<strong id="deckcount">0</strong>枚</span></div>
@@ -23,22 +25,37 @@
 <script>
 (()=>{
 const q=s=>document.querySelector(s), mk=(pre,label,n)=>Array.from({length:n},(_,i)=>({key:pre+(i+1),name:label+(i+1),type:pre})), copies=a=>a.flatMap(c=>Array.from({length:4},(_,i)=>({...c,id:c.key+'-'+(i+1)})));
-const STD=copies(mk('S','スタンダード ',10)), NORMAL=copies(mk('N','通常 ',15));
-let unusedStd=[],packs=[],hands=[],selected=[],round=0,viewer=0,deck=[],market=[],discard=[],turn=0,dice=[],powers=[];
+const STD_BASE=mk('S','スタンダード ',10); STD_BASE[0]={key:'S1',name:'エレキテル研究所',type:'S',special:'elekiter'};
+const STD=copies(STD_BASE), NORMAL=copies(mk('N','通常 ',15));
+let unusedStd=[],packs=[],hands=[],selected=[],round=0,viewer=0,deck=[],market=[],discard=[],turn=0,dice=[],powers=[],installed=[],temporary=[],elekiterUsed=[];
 function sh(a){a=[...a];for(let i=a.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
 function card(c,count=1,click=false){let e=document.createElement(click?'button':'div');if(click)e.type='button';e.className='card';e.innerHTML='<span class="small">'+(c.type==='S'?'STANDARD':'NORMAL')+'</span><strong>'+c.name+'</strong><span class="small">'+c.key+'</span>'+(count>1?'<span class="badge">×'+count+'</span>':'');return e}
-function start(){let s=sh(STD);packs=[s.splice(0,5),s.splice(0,5),s.splice(0,5),s.splice(0,5)];unusedStd=s;hands=[[],[],[],[]];selected=[false,false,false,false];powers=Array.from({length:4},()=>({y:0,r:0,p:0}));round=0;viewer=0;deck=[];market=[];discard=[];turn=0;dice=[];q('#draft').classList.remove('hidden');q('#game').classList.add('hidden');q('#start').textContent='最初から';q('#status').textContent='第1巡：各自5枚から1枚選択。全員終了後に一斉パスします。';renderDraft()}
+function start(){let s=sh(STD);packs=[s.splice(0,5),s.splice(0,5),s.splice(0,5),s.splice(0,5)];unusedStd=s;hands=[[],[],[],[]];selected=[false,false,false,false];powers=Array.from({length:4},()=>({y:0,r:0,p:0}));installed=Array.from({length:4},()=>[]);temporary=Array.from({length:4},()=>[]);elekiterUsed=[false,false,false,false];round=0;viewer=0;deck=[];market=[];discard=[];turn=0;dice=[];q('#draft').classList.remove('hidden');q('#game').classList.add('hidden');q('#start').textContent='最初から';q('#status').textContent='第1巡：各自5枚から1枚選択。全員終了後に一斉パスします。';renderDraft()}
 function renderDraft(){q('#round').textContent=round+1;q('#who').textContent='プレイヤー'+(viewer+1);q('#progress').textContent=selected.filter(Boolean).length+'/4人選択済み';q('#instruction').textContent='プレイヤー'+(viewer+1)+'：'+packs[viewer].length+'枚から1枚選択';let e=q('#cards');e.innerHTML='';if(!selected[viewer])packs[viewer].forEach((c,i)=>{let b=card(c,1,true);b.onclick=()=>pick(i);e.appendChild(b)});let ps=q('#players');ps.innerHTML='';hands.forEach((h,p)=>{let b=document.createElement('button');b.type='button';b.className='player '+(p===viewer?'active':'');b.innerHTML='<strong>P'+(p+1)+'</strong><div class="muted">獲得 '+h.length+'/3</div><div class="small">'+(selected[p]?'選択済み':'未選択')+'</div>';b.onclick=()=>{viewer=p;renderDraft()};ps.appendChild(b)})}
 function pick(i){if(selected[viewer])return;hands[viewer].push(packs[viewer][i]);packs[viewer].splice(i,1);selected[viewer]=true;if(selected.every(Boolean)){if(round===2){setupGame();return}let old=packs.map(x=>[...x]),next=[[],[],[],[]];for(let p=0;p<4;p++)next[(p+1)%4]=old[p];packs=next;round++;selected=[false,false,false,false];viewer=0;q('#status').textContent='残り'+packs[0].length+'枚を一斉に次のプレイヤーへ渡しました。';renderDraft();return}let n=viewer;do{n=(n+1)%4}while(selected[n]);viewer=n;renderDraft()}
 function drawOne(){if(!deck.length&&discard.length){deck=sh(discard);discard=[]}return deck.shift()||null}
 function refillTo8(){let keys=new Set(market.map(c=>c.key));while(keys.size<8){let c=drawOne();if(!c)break;market.push(c);keys.add(c.key)}}
 function setupGame(){let leftovers=packs.flat();deck=sh([...unusedStd,...leftovers,...NORMAL]);market=[];refillTo8();q('#draft').classList.add('hidden');q('#game').classList.remove('hidden');q('#status').textContent='初期セットアップ完了。コロネリアでターン処理をテスト中。';beginTurn()}
-function beginTurn(){dice=Array.from({length:4},(_,i)=>({id:i+1,value:1+Math.floor(Math.random()*6),used:false}));q('#limit').classList.add('hidden');renderGame()}
+function beginTurn(){dice=Array.from({length:4},(_,i)=>({id:i+1,value:1+Math.floor(Math.random()*6),used:false}));elekiterUsed[turn]=false;q('#limit').classList.add('hidden');renderGame()}
 function unusedDice(){return dice.filter(d=>!d.used)} function useDie(id){let d=dice.find(x=>x.id===+id);if(!d||d.used)return null;d.used=true;return d}
 function colorFor(v){return v<=2?'y':v<=4?'r':'p'} function cname(c){return c==='y'?'黄':c==='r'?'赤':'紫'}
 function renderGame(){q('#turnwho').textContent='P'+(turn+1)+'のターン';let pw=powers[turn];q('#py').textContent=pw.y;q('#pr').textContent=pw.r;q('#pp').textContent=pw.p;q('#handcount').textContent=hands[turn].length;
 let de=q('#dice');de.innerHTML='';dice.forEach(d=>{let x=document.createElement('div');x.className='die '+(d.used?'used':'');x.innerHTML='<strong>🎲 '+d.value+'</strong><div class="small">'+(d.used?'使用済み':cname(colorFor(d.value))+'対応')+'</div>';de.appendChild(x)});
-['#normaldie','#corodie'].forEach(sel=>{let s=q(sel);s.innerHTML='';unusedDice().forEach(d=>{let o=document.createElement('option');o.value=d.id;o.textContent='🎲'+d.value+'（#'+d.id+'）';s.appendChild(o)})});renderMarket();renderPlayers()}
+['#normaldie','#corodie'].forEach(sel=>{let s=q(sel);s.innerHTML='';unusedDice().forEach(d=>{let o=document.createElement('option');o.value=d.id;o.textContent='🎲'+d.value+'（#'+d.id+'）';s.appendChild(o)})});renderCardActions();renderMarket();renderPlayers()}
+
+function renderCardActions(){
+ let ha=q('#handactions'),ic=q('#installedcards');ha.innerHTML='';ic.innerHTML='';
+ let labs=hands[turn].map((c,i)=>({c,i})).filter(x=>x.c.special==='elekiter');
+ if(!labs.length)ha.textContent='エレキテル研究所は手札にありません。';
+ labs.forEach(x=>{let b=document.createElement('button');b.className='secondary';b.style.margin='4px';b.textContent='エレキテル研究所を仮設置（🎲2＋🎲5＋黄1赤1紫1）';b.onclick=()=>installElekiter(x.i);ha.appendChild(b)});
+ if(temporary[turn].some(c=>c.special==='elekiter')){let d=document.createElement('div');d.textContent='仮設置：エレキテル研究所（効果使用不可）';ic.appendChild(d)}
+ let active=installed[turn].filter(c=>c.special==='elekiter');
+ active.forEach((c,i)=>{let row=document.createElement('div');row.style.margin='5px 0';let sel=document.createElement('select');unusedDice().forEach(d=>{let o=document.createElement('option');o.value=d.id;o.textContent='🎲'+d.value+'（#'+d.id+'）';sel.appendChild(o)});let b=document.createElement('button');b.className='secondary';b.textContent=elekiterUsed[turn]?'使用済み':'研究所を使用';b.disabled=elekiterUsed[turn]||!unusedDice().length;b.onclick=()=>useElekiter(sel.value);row.append('エレキテル研究所：サイコロ1個 → 黄1・赤1・紫1　',sel,b);ic.appendChild(row)});
+ if(!active.length&&!temporary[turn].length)ic.textContent='設置済みカードなし';
+}
+function installElekiter(handIndex){let p=powers[turn];if(p.y<1||p.r<1||p.p<1)return alert('設置には黄・赤・紫のパワーが1個ずつ必要です。');let d2=unusedDice().find(d=>d.value===2);let d5=unusedDice().find(d=>d.value===5);if(!d2||!d5)return alert('設置には未使用の出目2と出目5のサイコロが1個ずつ必要です。');d2.used=true;d5.used=true;p.y--;p.r--;p.p--;temporary[turn].push(hands[turn].splice(handIndex,1)[0]);renderGame()}
+function useElekiter(id){if(elekiterUsed[turn])return alert('エレキテル研究所はターン中1回だけ使用できます。');let d=useDie(id);if(!d)return alert('使用できるサイコロがありません。');powers[turn].y++;powers[turn].r++;powers[turn].p++;elekiterUsed[turn]=true;renderGame()}
+
 function groups(){let m=new Map();market.forEach(c=>{if(!m.has(c.key))m.set(c.key,[]);m.get(c.key).push(c)});return m}
 function renderMarket(){let g=groups(),e=q('#market');e.innerHTML='';g.forEach((arr,key)=>{let b=card(arr[0],arr.length,true);b.title='未使用サイコロ1個でこの束を獲得';b.onclick=()=>takeMarket(key);e.appendChild(b)});q('#types').textContent=g.size;q('#marketcount').textContent=market.length;q('#deckcount').textContent=deck.length;q('#discardcount').textContent=discard.length}
 function renderPlayers(){let ps=q('#finalplayers');ps.innerHTML='';hands.forEach((h,p)=>{let x=document.createElement('div');x.className='player '+(p===turn?'active':'');x.innerHTML='<strong>P'+(p+1)+'</strong><div class="muted">手札 '+h.length+'枚 / 黄'+powers[p].y+' 赤'+powers[p].r+' 紫'+powers[p].p+'</div><div class="small">'+h.map(c=>c.key).join(' / ')+'</div>';ps.appendChild(x)})}
@@ -49,7 +66,7 @@ q('#powerexchange').onclick=()=>{let f=q('#fromcolor').value,t=q('#tocolor').val
 q('#refresh').onclick=()=>{let p=powers[turn];if(p.y<1||p.r<1||p.p<1)return alert('黄・赤・紫が1個ずつ必要です。');p.y--;p.r--;p.p--;discard.push(...market);market=[];refillTo8();renderGame()};
 function finishTurn(){if(hands[turn].length>6){showHandLimit();return}completeEnd()}
 function showHandLimit(){let box=q('#limit');box.classList.remove('hidden');box.innerHTML='<strong>手札上限：6枚</strong><div class="small">P'+(turn+1)+'は捨てるカードを選んでください（現在'+hands[turn].length+'枚）。</div>';hands[turn].forEach((c,i)=>{let b=document.createElement('button');b.className='secondary';b.style.margin='5px';b.textContent=c.key+' '+c.name;b.onclick=()=>{discard.push(hands[turn].splice(i,1)[0]);if(hands[turn].length<=6)completeEnd();else showHandLimit()};box.appendChild(b)})}
-function completeEnd(){dice=[];refillTo8();turn=(turn+1)%4;beginTurn()}
+function completeEnd(){dice=[];if(temporary[turn].length){installed[turn].push(...temporary[turn]);temporary[turn]=[]}refillTo8();turn=(turn+1)%4;beginTurn()}
 q('#reroll').onclick=beginTurn;q('#endturn').onclick=finishTurn;q('#start').onclick=start;
 })();
 </script></body></html>
