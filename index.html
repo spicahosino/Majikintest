@@ -27,7 +27,7 @@
 (()=>{
 const q=s=>document.querySelector(s), mk=(pre,label,n)=>Array.from({length:n},(_,i)=>({key:pre+(i+1),name:label+(i+1),type:pre})), copies=a=>a.flatMap(c=>Array.from({length:4},(_,i)=>({...c,id:c.key+'-'+(i+1)})));
 const STD_BASE=mk('S','スタンダード ',10);
-const NORMAL_BASE=mk('N','通常 ',15); NORMAL_BASE[0]={key:'N1',name:'エレキテル研究所',type:'N',special:'elekiter'};
+const NORMAL_BASE=mk('N','通常 ',15); NORMAL_BASE[0]={key:'N1',name:'エレキテル研究所',type:'N',special:'elekiter'}; NORMAL_BASE[1]={key:'N2',name:'南蛮煙管',type:'N',special:'nanban'};
 const STD=copies(STD_BASE), NORMAL=copies(NORMAL_BASE);
 let playerCount=4,unusedStd=[],packs=[],hands=[],selected=[],round=0,viewer=0,deck=[],market=[],discard=[],turn=0,dice=[],powers=[],installed=[],temporary=[],elekiterUsed=[];
 function sh(a){a=[...a];for(let i=a.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
@@ -38,7 +38,8 @@ function pick(i){if(selected[viewer])return;hands[viewer].push(packs[viewer][i])
 function drawOne(){if(!deck.length&&discard.length){deck=sh(discard);discard=[]}let c=deck.shift()||null;if(c&&deck.length===0&&discard.length){deck=sh(discard);discard=[]}return c}
 function refillTo8(){let keys=new Set(market.map(c=>c.key));while(keys.size<8){let c=drawOne();if(!c)break;market.push(c);keys.add(c.key)}}
 function setupGame(){let leftovers=packs.flat();deck=sh([...unusedStd,...leftovers,...NORMAL]);market=[];refillTo8();q('#draft').classList.add('hidden');q('#game').classList.remove('hidden');q('#status').textContent='初期セットアップ完了。コロネリアでターン処理をテスト中。';beginTurn()}
-function beginTurn(){dice=Array.from({length:4},(_,i)=>({id:i+1,value:1+Math.floor(Math.random()*6),used:false}));elekiterUsed[turn]=false;q('#limit').classList.add('hidden');renderGame()}
+function beginTurn(){dice=Array.from({length:4},(_,i)=>({id:i+1,value:1+Math.floor(Math.random()*6),used:false}));elekiterUsed[turn]=false;q('#limit').classList.add('hidden');resolveTurnStartEffects();renderGame()}
+function resolveTurnStartEffects(){let pipes=installed[turn].filter(c=>c.special==='nanban');pipes.forEach((c,i)=>{let ans=prompt('南蛮煙管'+(pipes.length>1?'（'+(i+1)+'枚目）':'')+'：ターン開始時に獲得するパワーを選んでください。\n黄 / 赤 / 紫','黄');if(ans===null)return;let v=String(ans).trim();let col=(v==='黄'||v.toLowerCase()==='y')?'y':(v==='赤'||v.toLowerCase()==='r')?'r':(v==='紫'||v.toLowerCase()==='p')?'p':null;if(!col){alert('黄・赤・紫のいずれかを入力してください。今回は獲得しません。');return}powers[turn][col]+=2;});}
 function unusedDice(){return dice.filter(d=>!d.used)} function useDie(id){let d=dice.find(x=>x.id===+id);if(!d||d.used)return null;d.used=true;return d}
 function colorFor(v){return v<=2?'y':v<=4?'r':'p'} function cname(c){return c==='y'?'黄':c==='r'?'赤':'紫'}
 function renderGame(){q('#turnwho').textContent='P'+(turn+1)+'のターン';let pw=powers[turn];q('#py').textContent=pw.y;q('#pr').textContent=pw.r;q('#pp').textContent=pw.p;q('#handcount').textContent=hands[turn].length;
@@ -47,15 +48,17 @@ let de=q('#dice');de.innerHTML='';dice.forEach(d=>{let x=document.createElement(
 
 function renderCardActions(){
  let ha=q('#handactions'),ic=q('#installedcards');ha.innerHTML='';ic.innerHTML='';
- let labs=hands[turn].map((c,i)=>({c,i})).filter(x=>x.c.special==='elekiter');
- if(!labs.length)ha.textContent='エレキテル研究所は手札にありません。';
- labs.forEach(x=>{let b=document.createElement('button');b.className='secondary';b.style.margin='4px';b.textContent='エレキテル研究所を仮設置（🎲2＋🎲5＋黄1赤1紫1）';b.onclick=()=>installElekiter(x.i);ha.appendChild(b)});
- if(temporary[turn].some(c=>c.special==='elekiter')){let d=document.createElement('div');d.textContent='仮設置：エレキテル研究所（効果使用不可）';ic.appendChild(d)}
+ let handSpecials=hands[turn].map((c,i)=>({c,i})).filter(x=>x.c.special==='elekiter'||x.c.special==='nanban');
+ if(!handSpecials.length)ha.textContent='現在、実装済みの設置可能カードは手札にありません。';
+ handSpecials.forEach(x=>{let b=document.createElement('button');b.className='secondary';b.style.margin='4px';if(x.c.special==='elekiter'){b.textContent='エレキテル研究所を仮設置（🎲2＋🎲5＋黄1赤1紫1）';b.onclick=()=>installElekiter(x.i)}else{b.textContent='南蛮煙管を仮設置（任意🎲2個＋黄2赤2紫2）';b.onclick=()=>installNanban(x.i)}ha.appendChild(b)});
+ temporary[turn].forEach(c=>{if(c.special==='elekiter'||c.special==='nanban'){let d=document.createElement('div');d.textContent='仮設置：'+c.name+'（ターン開始時効果はまだ発動しません）';ic.appendChild(d)}});
  let active=installed[turn].filter(c=>c.special==='elekiter');
  active.forEach((c,i)=>{let row=document.createElement('div');row.style.margin='5px 0';let sel=document.createElement('select');unusedDice().forEach(d=>{let o=document.createElement('option');o.value=d.id;o.textContent='🎲'+d.value+'（#'+d.id+'）';sel.appendChild(o)});let b=document.createElement('button');b.className='secondary';b.textContent=elekiterUsed[turn]?'使用済み':'研究所を使用';b.disabled=elekiterUsed[turn]||!unusedDice().length;b.onclick=()=>useElekiter(sel.value);row.append('エレキテル研究所：サイコロ1個 → 黄1・赤1・紫1　',sel,b);ic.appendChild(row)});
- if(!active.length&&!temporary[turn].length)ic.textContent='設置済みカードなし';
+ installed[turn].filter(c=>c.special==='nanban').forEach(c=>{let d=document.createElement('div');d.style.margin='5px 0';d.textContent='南蛮煙管：ターン開始時に黄・赤・紫から1種類を選び2個獲得';ic.appendChild(d)});
+ if(!installed[turn].length&&!temporary[turn].length)ic.textContent='設置済みカードなし';
 }
 function installElekiter(handIndex){let p=powers[turn];if(p.y<1||p.r<1||p.p<1)return alert('設置には黄・赤・紫のパワーが1個ずつ必要です。');let d2=unusedDice().find(d=>d.value===2);let d5=unusedDice().find(d=>d.value===5);if(!d2||!d5)return alert('設置には未使用の出目2と出目5のサイコロが1個ずつ必要です。');d2.used=true;d5.used=true;p.y--;p.r--;p.p--;temporary[turn].push(hands[turn].splice(handIndex,1)[0]);renderGame()}
+function installNanban(handIndex){let p=powers[turn];if(p.y<2||p.r<2||p.p<2)return alert('設置には黄・赤・紫のパワーが2個ずつ必要です。');let avail=unusedDice();if(avail.length<2)return alert('設置には未使用のサイコロが2個必要です。');avail[0].used=true;avail[1].used=true;p.y-=2;p.r-=2;p.p-=2;temporary[turn].push(hands[turn].splice(handIndex,1)[0]);renderGame()}
 function useElekiter(id){if(elekiterUsed[turn])return alert('エレキテル研究所はターン中1回だけ使用できます。');let d=useDie(id);if(!d)return alert('使用できるサイコロがありません。');powers[turn].y++;powers[turn].r++;powers[turn].p++;elekiterUsed[turn]=true;renderGame()}
 
 function groups(){let m=new Map();market.forEach(c=>{if(!m.has(c.key))m.set(c.key,[]);m.get(c.key).push(c)});return m}
